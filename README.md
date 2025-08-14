@@ -10,6 +10,7 @@
 
 - [Mission Statement](#mission-statement)
 - [Overview](#overview)
+- [Codebase Structure](#codebase-structure)
 - [Why Open Integration Engine?](#why-open-integration-engine)
 - [Core Features](#core-features)
 - [Who It’s For](#who-its-for)
@@ -29,6 +30,22 @@ To empower seamless healthcare interoperability through an open, community-drive
 ## Overview
 
 The **Open Integration Engine Project** is an open-source initiative committed to advancing healthcare interoperability. Building upon the foundation of **Mirth Connect**, a widely adopted integration engine, this project aims to provide healthcare organizations with a robust, flexible, and cost-effective solution for connecting disparate systems and facilitating efficient data exchange.
+
+---
+
+## Codebase Structure
+
+The repository is organized into the following primary modules:
+
+- `client/` – Desktop administrator interface for configuring and monitoring channels.
+- `server/` – Core runtime engine and web services that process and route messages.
+- `command/` – Command-line utilities for interacting with a running server.
+- `donkey/` – Underlying message-processing framework shared by server components.
+- `manager/` – Desktop tool for managing the engine as a service on various platforms.
+- `generator/` – Templates and scripts for creating custom extensions.
+- `simplesender/` – Example utility for sending test messages to the server.
+- `webadmin/` – Web-based administrative console.
+- `tools/` – Build and packaging utilities, such as Install4j configurations.
 
 ---
 
