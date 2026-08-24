@@ -731,9 +731,72 @@ def setupContent = [stageSetup, serverJar, dbconfJar, launcherJar,
 def signSetupJars = tasks.register('signSetupJars') {
     description = 'Adds JWS manifest attributes and signs the client-lib and extension jars.'
     dependsOn setupContent
-    onlyIf { !rootProject.disableSigning }
+    onlyIf { rootProject.signingEnabled }
     outputs.upToDateWhen { false }
     doLast {
+        def keystoreProps = new Properties()
+        def keystorePropertiesPath = providers.gradleProperty('keystore_property_file').getOrNull()
+        if (keystorePropertiesPath) {
+            def keystorePropertiesFile = file(keystorePropertiesPath)
+            if (!keystorePropertiesFile.isFile()) {
+                throw new GradleException("Signing properties file does not exist: ${keystorePropertiesFile}")
+            }
+            keystorePropertiesFile.withInputStream { keystoreProps.load(it) }
+        }
+
+        // Secrets belong in the environment. Project properties and an explicit
+        // properties file remain available for local/hardware-token workflows,
+        // with environment variables taking precedence.
+        def signingEnvironment = [
+                'cert'             : 'OIE_SIGNING_CERT_MODE',
+                'key.keystore'     : 'OIE_SIGNING_KEYSTORE',
+                'key.storetype'    : 'OIE_SIGNING_STORE_TYPE',
+                'key.storepass'    : 'OIE_SIGNING_STORE_PASSWORD',
+                'key.alias'        : 'OIE_SIGNING_ALIAS',
+                'key.keypass'      : 'OIE_SIGNING_KEY_PASSWORD',
+                'key.providerclass': 'OIE_SIGNING_PROVIDER_CLASS',
+                'key.providerarg'  : 'OIE_SIGNING_PROVIDER_ARG',
+                'key.certchain'    : 'OIE_SIGNING_CERT_CHAIN',
+                'signingTsa'       : 'OIE_SIGNING_TSA_URL'
+        ]
+        def signingProp = { String name ->
+            def environmentName = signingEnvironment[name]
+            (environmentName ? providers.environmentVariable(environmentName).getOrNull() : null) ?:
+                    providers.gradleProperty(name).getOrNull() ?:
+                    keystoreProps.getProperty(name)
+        }
+        def caSigning = signingProp('cert') == 'ca'
+        def requiredProperties = caSigning
+                ? ['key.alias', 'key.storepass', 'key.storetype', 'key.providerclass',
+                   'key.providerarg', 'key.certchain', 'signingTsa']
+                : ['key.alias', 'key.keystore', 'key.storepass', 'key.keypass', 'key.storetype',
+                   'signingTsa']
+        def missingProperties = requiredProperties.findAll { !signingProp(it) }
+        if (!missingProperties.isEmpty()) {
+            def missingVariables = missingProperties.collect { signingEnvironment[it] ?: it }
+            throw new GradleException('Signing was explicitly enabled, but required configuration is missing: ' +
+                    missingVariables.join(', ') + '. Supply OIE_SIGNING_* environment variables, ' +
+                    'or pass an explicit -Pkeystore_property_file=/absolute/path.')
+        }
+
+        def expandBasedir = { String value ->
+            value.replace('${basedir}', project.projectDir.absolutePath)
+        }
+        File signingKeystore = null
+        File signingCertChain = null
+        if (caSigning) {
+            signingCertChain = file(expandBasedir(signingProp('key.certchain')))
+            if (!signingCertChain.isFile()) {
+                throw new GradleException("Signing certificate chain does not exist: ${signingCertChain}")
+            }
+        } else {
+            signingKeystore = file(expandBasedir(signingProp('key.keystore')))
+            if (!signingKeystore.isFile()) {
+                throw new GradleException("Signing keystore does not exist: ${signingKeystore}")
+            }
+        }
+        def tsa = signingProp('signingTsa')
+
         def manifestJars = fileTree('setup/client-lib') {
             include '**/*.jar'
             exclude 'bcp*.jar'
@@ -751,23 +814,6 @@ def signSetupJars = tasks.register('signSetupJars') {
             if (proc.waitFor() != 0) {
                 throw new GradleException("jar umf failed for ${jarFile.name}: ${out}")
             }
-        }
-
-        def keystoreFile = providers.gradleProperty('keystore_property_file').getOrNull()
-                ?: 'keystore.properties'
-        def keystoreProps = new Properties()
-        file(keystoreFile).withInputStream { keystoreProps.load(it) }
-        // Property precedence: a -P project property on the command line wins
-        // over (or supplies a missing) value from the properties file. The
-        // YubiKey workflow relies on this for the PIN (-Pkey.storepass=...).
-        def signingProp = { String name ->
-            providers.gradleProperty(name).getOrNull() ?: keystoreProps.getProperty(name)
-        }
-        def tsa = signingProp('signingTsa') ?: 'http://timestamp.digicert.com'
-
-        if (!signingProp('key.storepass')) {
-            throw new GradleException("key.storepass is not set; add it to ${keystoreFile} " +
-                    'or pass it on the command line as -Pkey.storepass=...')
         }
 
         def signJars = fileTree('setup/client-lib') { include '**/*.jar' } +
@@ -797,7 +843,7 @@ def signSetupJars = tasks.register('signSetupJars') {
             }
         }
 
-        if (signingProp('cert') == 'ca') {
+        if (caSigning) {
             logger.lifecycle 'Signing with CA certificate'
             signJars.each { jarFile ->
                 withRetry {
@@ -809,26 +855,26 @@ def signSetupJars = tasks.register('signSetupJars') {
                             providerarg: signingProp('key.providerarg'),
                             tsaurl: tsa) {
                         arg(value: '-certchain')
-                        arg(value: signingProp('key.certchain'))
+                        arg(value: signingCertChain.absolutePath)
                         sysproperty(key: 'jsse.enableSNIExtension', value: 'false')
-                        sysproperty(key: 'https.protocols', value: 'TLSv1.2,TLSv1.1')
+                        sysproperty(key: 'https.protocols', value: 'TLSv1.3,TLSv1.2')
                     }
                 }
             }
         } else {
-            logger.lifecycle 'Signing with self-signed certificate'
+            logger.lifecycle 'Signing with file-based keystore'
             signJars.each { jarFile ->
                 withRetry {
                     ant.signjar(jar: jarFile.absolutePath,
                             alias: signingProp('key.alias'),
-                            keystore: signingProp('key.keystore'),
+                            keystore: signingKeystore.absolutePath,
                             storepass: signingProp('key.storepass'),
                             keypass: signingProp('key.keypass'),
                             storetype: signingProp('key.storetype'),
                             tsaurl: tsa,
                             digestalg: 'SHA-256') {
                         sysproperty(key: 'jsse.enableSNIExtension', value: 'false')
-                        sysproperty(key: 'https.protocols', value: 'TLSv1.2,TLSv1.1')
+                        sysproperty(key: 'https.protocols', value: 'TLSv1.3,TLSv1.2')
                     }
                 }
             }

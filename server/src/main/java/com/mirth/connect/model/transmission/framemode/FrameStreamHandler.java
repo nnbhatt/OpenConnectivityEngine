@@ -111,6 +111,7 @@ public class FrameStreamHandler extends StreamHandler {
         List<Byte> firstBytes = new ArrayList<Byte>();
         // A List is used here to allow the buffer to simulate a "shifting window" of potential bytes.
         endBytesBuffer = new ArrayList<Byte>();
+        boolean returnPartialData = false;
 
         try {
             // Skip to the beginning of the message
@@ -214,12 +215,16 @@ public class FrameStreamHandler extends StreamHandler {
                     // If any other Throwable was caught, return null to indicate that we're done
                     return null;
                 }
+            } else {
+                returnPartialData = true;
             }
         }
 
         if (endOfMessageBytes.length > 0) {
-            // If we got here, then the end of message bytes were not captured
-            throw new FrameStreamHandlerException(false, endOfMessageBytes, getLastBytes());
+            if (!returnPartialData) {
+                // If we got here, then the end of message bytes were not captured
+                throw new FrameStreamHandlerException(false, endOfMessageBytes, getLastBytes());
+            }
         } else {
             /*
              * If we got here, no end of message bytes were expected, but we should reset the check

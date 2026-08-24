@@ -111,6 +111,9 @@ public class MigrationUtil {
         if (version == null) {
             return null;
         }
+        if (length <= 0) {
+            return version;
+        }
 
         List<String> numbers = new ArrayList<String>(Arrays.asList(version.split("\\.")));
 

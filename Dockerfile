@@ -13,7 +13,6 @@ FROM ubuntu:noble-20251013 AS builder
 WORKDIR /app
 # sdkman requires bash
 SHELL ["/bin/bash", "-c"]
-ARG GRADLE_BUILD_ARGS="-PdisableSigning=true"
 
 # Stage 1a: Install dependencies
 # Install necessary tools, then drop root. The base image ships a
@@ -42,7 +41,7 @@ RUN mkdir -p /home/ubuntu/.gradle
 RUN --mount=type=cache,target=/home/ubuntu/.gradle/caches,sharing=locked,uid=1000,gid=1000 \
     --mount=type=cache,target=/home/ubuntu/.gradle/wrapper,sharing=locked,uid=1000,gid=1000 \
     source "$HOME/.sdkman/bin/sdkman-init.sh" \
-    && ./gradlew --no-daemon build ${GRADLE_BUILD_ARGS}
+    && ./gradlew --no-daemon build
 
 ##########################################
 #

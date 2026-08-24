@@ -61,3 +61,8 @@ pom.xml.versionsBackup
 release.properties
 replay_pid*
 .github/
+
+# Keep local release-signing material out of Docker build contexts and layers.
+/server/keystore.jks
+/server/keystore.properties
+/server/signing-keystore.*

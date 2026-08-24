@@ -28,10 +28,12 @@
  * are not reproduced (inert, no runtime effect).
  *
  * Usage (build flags are Gradle project properties, -Pname=true):
- *   ./gradlew build                          full build + tests
+ *   ./gradlew build                          unsigned build + tests
  *   ./gradlew build -PdisableTests=true      skip tests
- *   ./gradlew build -PdisableSigning=true    skip jar signing
+ *   ./gradlew build -PenableSigning=true     opt in to release signing
  *   ./gradlew test [-Pcoverage=true]         tests only (JaCoCo optional)
+ *   ./gradlew test -PincludeLegacyTests=true include external/legacy suites
+ *   ./gradlew cyclonedxBom                   aggregate CycloneDX SBOM
  *   ./gradlew dist                           distribution extension zips
  *   ./gradlew clean                          clean all modules
  *
@@ -45,6 +47,8 @@ plugins {
     // vulnerability scanning: ./gradlew dependencyCheckAggregate
     // (replaces the old standalone dependency-check.xml Ant entry point)
     id 'org.owasp.dependencycheck' version '12.2.2'
+    // aggregate software bill of materials: ./gradlew cyclonedxBom
+    id 'org.cyclonedx.bom' version '3.3.0'
 }
 
 dependencyCheck {
@@ -58,6 +62,9 @@ dependencyCheck {
     analyzers {
         assemblyEnabled = false
     }
+    formats = ['HTML', 'SARIF']
+    failOnError = true
+    skipTestGroups = true
     // also scan the jars that remain vendored (no Maven coordinates)
     scanSet = subprojects.collect { it.file('lib') }.findAll { it.directory }
 }
@@ -69,8 +76,11 @@ def flag = { String name ->
 
 ext {
     disableTests = flag('disableTests')
-    disableSigning = flag('disableSigning')
+    // Signing is privileged and must be explicitly enabled. Keep the old
+    // disable flag as a compatibility override for existing automation.
+    signingEnabled = flag('enableSigning') && !flag('disableSigning')
     coverageEnabled = flag('coverage')
+    includeLegacyTests = flag('includeLegacyTests')
 }
 
 allprojects {
@@ -263,7 +273,40 @@ subprojects {
         minHeapSize = '128m'
         maxHeapSize = '2048m'
         jvmArgs '-Xshare:off'
-        include '**/*Test.class'
+        // Run Gradle's standard unit-test naming patterns. The explicit legacy
+        // exclusions below are visible debt: those suites require external
+        // services/fixtures or have non-portable historical expectations.
+        include '**/*Test.class', '**/*Tests.class', '**/*TestCase.class',
+                'com/mirth/connect/server/TestPreProcessor.class',
+                'com/mirth/connect/server/TestFilterTransformer.class',
+                'com/mirth/connect/server/util/TestServer.class'
+        if (!rootProject.includeLegacyTests) {
+            if (project.name == 'donkey') {
+                // Database integration suite; requires donkey-testing.properties.
+                exclude 'com/mirth/connect/donkey/test/*Tests.class'
+            }
+            if (project.name == 'server') {
+                exclude 'com/mirth/connect/server/TestPreProcessor.class',
+                        'com/mirth/connect/server/TestFilterTransformer.class',
+                        'com/mirth/connect/server/util/TestServer.class',
+                        'com/mirth/connect/connectors/ConnectorTests.class',
+                        'com/mirth/connect/connectors/file/filesystems/FileConnectionTests.class',
+                        'com/mirth/connect/connectors/jdbc/DatabaseDispatcherTests.class',
+                        'com/mirth/connect/connectors/jdbc/DatabaseReceiverInvalidColumnNameTests.class',
+                        'com/mirth/connect/connectors/jdbc/DatabaseReceiverTests.class',
+                        'com/mirth/connect/connectors/jms/JmsDispatcherTests.class',
+                        'com/mirth/connect/connectors/jms/JmsReceiverTests.class',
+                        'com/mirth/connect/model/converters/DocumentSerailizerTests.class',
+                        'com/mirth/connect/plugins/datapruner/DataPrunerTests.class',
+                        'com/mirth/connect/plugins/datatypes/dicom/DICOMSerializerTests.class',
+                        'com/mirth/connect/plugins/datatypes/edi/EDISerializerTests.class',
+                        'com/mirth/connect/plugins/datatypes/hl7v2/HL7SerializerTests.class',
+                        'com/mirth/connect/plugins/datatypes/ncpdp/NCPDPSerializerTests.class',
+                        'com/mirth/connect/server/DatabaseConnectionPoolTests.class',
+                        'com/mirth/connect/server/controllers/DonkeyEngineControllerTests.class',
+                        'com/mirth/connect/server/controllers/MessageControllerTests.class'
+            }
+        }
         /*
          * Past ~4 forks the per-fork JVM startup cost (inflated by -Xshare:off above) outweighs the
          * gain, since only a handful of classes take more than a second. Override with -PtestForks=N.
@@ -280,6 +323,21 @@ subprojects {
             reports.html.required = true
         }
     }
+}
+
+// Generate a production-dependency SBOM for each project and aggregate it at
+// build/reports/cyclonedx/bom.json. Build-environment and test dependencies are
+// intentionally excluded from the distributable product inventory.
+allprojects {
+    tasks.matching { it.name == 'cyclonedxDirectBom' }.configureEach {
+        includeConfigs = ['runtimeClasspath']
+        includeBuildEnvironment = false
+        xmlOutput.unsetConvention()
+    }
+}
+
+tasks.named('cyclonedxBom') {
+    xmlOutput.unsetConvention()
 }
 
 // ---------------------------------------------------------------------

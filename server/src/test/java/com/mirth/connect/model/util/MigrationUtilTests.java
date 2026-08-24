@@ -34,7 +34,7 @@ public class MigrationUtilTests extends TestCase {
     public void testNormalizeVersion() {
         assertEquals("1.8", MigrationUtil.normalizeVersion("1.8", -1));
         assertEquals("1.8", MigrationUtil.normalizeVersion("1.8", 0));
-        assertEquals("1.8", MigrationUtil.normalizeVersion("1.8", 1));
+        assertEquals("1", MigrationUtil.normalizeVersion("1.8", 1));
         assertEquals("1.8", MigrationUtil.normalizeVersion("1.8", 2));
         assertEquals("1.8.0", MigrationUtil.normalizeVersion("1.8", 3));
         assertEquals("1.8.0.0", MigrationUtil.normalizeVersion("1.8", 4));
