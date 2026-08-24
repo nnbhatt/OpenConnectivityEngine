@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
-      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      HAS_NVD_API_KEY: ${{ secrets.NVD_API_KEY != '' }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,11 +74,13 @@ jobs:
           cache-db: true
 
       - name: Run OWASP Dependency-Check
-        if: env.NVD_API_KEY != ''
+        if: env.HAS_NVD_API_KEY == 'true'
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: ./gradlew --no-daemon dependencyCheckAggregate
 
       - name: Note optional NVD configuration
-        if: env.NVD_API_KEY == ''
+        if: env.HAS_NVD_API_KEY == 'false'
         run: echo "::notice::NVD_API_KEY is not configured; the complete Syft/Grype distribution scan ran, but the supplementary OWASP scan was skipped to avoid NVD rate-limit failures."
 
       - name: Upload dependency security reports
