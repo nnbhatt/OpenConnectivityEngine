@@ -40,6 +40,8 @@ The build is driven by Gradle through the included wrapper; no separate Gradle i
 ```
 On Windows use `gradlew.bat` instead of `./gradlew`. The assembled distribution lands in `server/setup`, the same location the previous Ant build used. Normal and CI builds are unsigned. For unsigned release candidates, run a clean build: `./gradlew clean build dist`. Windows with SDKMan may generate an error about the file path being too long in the javadoc step, skip this by adding `-x :server:userApiJavadoc` to your Gradle command.
 
+The scheduled security workflow always scans a distribution SBOM with Syft and Grype. Its supplementary OWASP Dependency-Check step requires an `NVD_API_KEY` repository secret; without one, the workflow skips that step rather than failing on the NVD anonymous rate limit.
+
 The default test gate runs all self-contained suites using Gradle's standard `*Test`, `*Tests`, and `*TestCase` patterns. A documented set of legacy and external-infrastructure suites, including three historical `Test*` classes with nonstandard names, remains excluded because it currently needs database services, a running server, private fixtures, or portability repairs. Run `./gradlew test -PincludeLegacyTests=true` to audit that backlog; it is not expected to pass until those prerequisites and failures are resolved.
 
 Jar signing is a privileged release operation and is disabled unless `-PenableSigning=true` is supplied. Never use the historical repository signing key; it has been publicly exposed. Generate a new signing identity, keep its keystore and passwords outside the checkout in an approved secrets manager, and inject these environment variables only in a protected release environment:
