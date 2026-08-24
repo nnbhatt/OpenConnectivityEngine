@@ -1,5 +1,8 @@
 name: Build Open Integration Engine
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -14,45 +17,78 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Upload
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: Event File
         path: ${{ github.event_path }}
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           java-version: '17'
           java-package: 'jdk+fx'
           distribution: 'zulu'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
           validate-wrappers: true
+          cache-provider: basic
 
-      - name: Build OIE (signed)
-        if: github.ref == 'refs/heads/main'
-        run: ./gradlew build
+      - name: Build, test, and generate SBOM (unsigned)
+        run: ./gradlew --no-daemon build cyclonedxBom -Pcoverage=true
 
-      - name: Build OIE (unsigned)
-        if: github.ref != 'refs/heads/main'
-        run: ./gradlew build -PdisableSigning=true -Pcoverage=true
+      - name: Prepare distribution SBOM output
+        run: mkdir -p build/reports/sbom
+
+      - name: Generate distribution SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: server/setup
+          format: cyclonedx-json
+          output-file: build/reports/sbom/openintegrationengine.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Scan distribution SBOM
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          sbom: build/reports/sbom/openintegrationengine.cdx.json
+          output-format: json
+          output-file: build/reports/sbom/grype-results.json
+          severity-cutoff: high
+          fail-build: false
+          cache-db: true
+
+      - name: Upload CycloneDX SBOMs and vulnerability report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oie-cyclonedx-sboms
+          path: |
+            build/reports/cyclonedx/bom.json
+            build/reports/sbom/openintegrationengine.cdx.json
+            build/reports/sbom/grype-results.json
+          if-no-files-found: error
 
       - name: Package distribution
-        run: tar czf openintegrationengine.tar.gz -C server/ setup --transform 's|^setup|openintegrationengine/|'
+        run: tar czf openintegrationengine-unsigned.tar.gz -C server/ setup --transform 's|^setup|openintegrationengine/|'
 
-      - name: Create artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload unsigned build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: oie-build
-          path: openintegrationengine.tar.gz
+          name: oie-unsigned-build
+          path: openintegrationengine-unsigned.tar.gz
+          if-no-files-found: error
 
       - name: Stage Test Results
         if: (!cancelled())
@@ -63,9 +99,8 @@ jobs:
 
       - name: Upload Test Results
         if: (!cancelled())
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Test Results
           path: |
             aggregate-test-results/**/*.xml
-

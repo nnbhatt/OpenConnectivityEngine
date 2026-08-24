@@ -45,6 +45,16 @@ public class TemplateValueReplacerTests {
     
     private class TestTemplateValueReplacer extends TemplateValueReplacer {
         @Override
+        protected VelocityContext getDefaultContext() {
+            // This test exercises template substitution, not the server's
+            // process-wide controller singleton. Keep it deterministic when
+            // other test classes install a mocked ControllerFactory.
+            VelocityContext context = new VelocityContext();
+            context.put("maps", new MapTool());
+            return context;
+        }
+
+        @Override
         protected void loadContextFromMap(VelocityContext context, Map<String, ?> map) {
             Map<String, String> velocityMap = new HashMap<String, String>();
             velocityMap.put("velocity1", "valueOfVelocity1");
@@ -54,4 +64,3 @@ public class TemplateValueReplacerTests {
         }
     }
 }
-

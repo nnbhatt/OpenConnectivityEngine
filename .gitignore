@@ -115,6 +115,11 @@ donkey/donkey-test
 /MapUtilTestDB/
 /testconf/
 
+# Local release-signing material must never be committed.
+/server/keystore.jks
+/server/keystore.properties
+/server/signing-keystore.*
+
 # /client/
 /client/logs
 /client/classes

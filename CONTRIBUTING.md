@@ -32,15 +32,30 @@ in the project's root directory. No other tooling is required.
 ### 5a. Build
 The build is driven by Gradle through the included wrapper; no separate Gradle install is needed:
 ```bash
-./gradlew build -PdisableSigning=true   # full build without jar signing
-./gradlew test                          # run the unit tests (-Pcoverage=true for JaCoCo)
-./gradlew dist                          # build the distribution extension zips
+./gradlew build                         # full unsigned build and unit tests
+./gradlew test                          # run unit tests (-Pcoverage=true for JaCoCo)
+./gradlew cyclonedxBom                  # aggregate CycloneDX SBOM
+./gradlew dependencyCheckAggregate      # dependency vulnerability reports
+./gradlew dist                          # build distribution extension zips
 ```
-On Windows use `gradlew.bat` instead of `./gradlew`. The assembled distribution lands in `server/setup`, the same location the previous Ant build used. For release artifacts, run a clean build: `./gradlew clean build dist`. Windows with SDKMan may generate an error about the file path being too long in the javadoc step, skip this by adding `-x :server:userApiJavadoc` to your Gradle command.
+On Windows use `gradlew.bat` instead of `./gradlew`. The assembled distribution lands in `server/setup`, the same location the previous Ant build used. Normal and CI builds are unsigned. For unsigned release candidates, run a clean build: `./gradlew clean build dist`. Windows with SDKMan may generate an error about the file path being too long in the javadoc step, skip this by adding `-x :server:userApiJavadoc` to your Gradle command.
+
+The default test gate runs all self-contained suites using Gradle's standard `*Test`, `*Tests`, and `*TestCase` patterns. A documented set of legacy and external-infrastructure suites, including three historical `Test*` classes with nonstandard names, remains excluded because it currently needs database services, a running server, private fixtures, or portability repairs. Run `./gradlew test -PincludeLegacyTests=true` to audit that backlog; it is not expected to pass until those prerequisites and failures are resolved.
+
+Jar signing is a privileged release operation and is disabled unless `-PenableSigning=true` is supplied. Never use the historical repository signing key; it has been publicly exposed. Generate a new signing identity, keep its keystore and passwords outside the checkout in an approved secrets manager, and inject these environment variables only in a protected release environment:
+
+- `OIE_SIGNING_KEYSTORE`
+- `OIE_SIGNING_STORE_TYPE`
+- `OIE_SIGNING_STORE_PASSWORD`
+- `OIE_SIGNING_ALIAS`
+- `OIE_SIGNING_KEY_PASSWORD`
+- `OIE_SIGNING_TSA_URL` (an explicitly approved timestamp authority endpoint)
+
+With those values injected, run `./gradlew --no-daemon clean build dist -PenableSigning=true`. Hardware-token/CA workflows may additionally use `OIE_SIGNING_CERT_MODE=ca`, `OIE_SIGNING_PROVIDER_CLASS`, `OIE_SIGNING_PROVIDER_ARG`, and `OIE_SIGNING_CERT_CHAIN`. An explicit `-Pkeystore_property_file=/absolute/path` remains available for local release tooling, but that file must stay outside the repository with restrictive permissions. Do not pass passwords as Gradle command-line properties.
 
 Dependencies are pinned and checksum-verified. To change a dependency version: edit `gradle/libs.versions.toml`, then refresh the checksum metadata **with a cold dependency cache and CI's flags**:
 ```bash
-GRADLE_USER_HOME=$(mktemp -d) ./gradlew --write-verification-metadata sha256 build dist -PdisableSigning=true -Pcoverage=true
+GRADLE_USER_HOME=$(mktemp -d) ./gradlew --write-verification-metadata sha256 build dist cyclonedxBom -Pcoverage=true
 ```
 The cold cache matters: a warm cache skips re-resolving already-cached parent POMs, so they never get recorded, and the build then fails verification only in CI (this bit us once during the migration). The run downloads everything once and takes a few minutes. Only when adding a **new** artifact that ships in the distribution does `gradle/vendored-layout.json` need a one-line placement entry, and the build fails with a message telling you so.
 

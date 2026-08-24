@@ -14,6 +14,7 @@
 - [Core Features](#core-features)
 - [Who It’s For](#who-its-for)
 - [Building from Source](#building-from-source)
+- [Security, Privacy, and Compliance](#security-privacy-and-compliance)
 - [Project Values](#project-values)
 - [Community and Governance](#community-and-governance)
 - [History and Roadmap](#history-and-roadmap)
@@ -84,11 +85,21 @@ On Windows use `gradlew.bat`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the ful
 
 ---
 
+## Security, Privacy, and Compliance
+
+Open Integration Engine provides capabilities that can support healthcare data integration in a security- and privacy-conscious deployment. Installing or using the software does **not** by itself make an organization or a deployment compliant with HIPAA, GDPR, or any other law, regulation, or contractual framework. Compliance depends on the complete technical and operational environment, including configuration, identity and access management, infrastructure, data handling, monitoring, policies, agreements, and risk management.
+
+Before using Open Integration Engine with sensitive or regulated data, read the [Security Policy](SECURITY.md), follow its [production hardening checklist](SECURITY.md#production-hardening-checklist), and validate the resulting deployment against your organization’s security, privacy, legal, and regulatory requirements.
+
+Report suspected vulnerabilities privately as described in [SECURITY.md](SECURITY.md#reporting-a-vulnerability). Do not disclose vulnerability details or sensitive data in a public issue.
+
+---
+
 ## Project Values
 
 - **Community-Driven Development** – Innovation through global collaboration  
 - **Vendor Neutrality** – Free from proprietary constraints  
-- **Security and Compliance** – HIPAA/GDPR-compliant architecture
+- **Security and Deployment Responsibility** – Security-conscious development, transparent reporting, and practical guidance for operators handling sensitive data
 
 ---
 
